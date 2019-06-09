@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import random
 from scipy.special import softmax
+from numpy import inf
 
 
 def create_x_data_set(train_path):
@@ -44,10 +45,10 @@ def shuffle_data(x, y):
 
 
 def init_weights(rows, cols=1):
-    if cols == 1:
-        return np.random.rand(rows)
-    else:
-        return np.random.rand(rows, cols)
+    # if cols == 1:
+    #     return np.random.rand(rows)
+    # else:
+    return np.random.rand(rows, cols)
 
 
 def load_files():
@@ -116,15 +117,68 @@ def get_z1(weights, x):
     return z1
 
 
-def forward(weights, x):
+def forward_prop(weights, x, y):
     '''
     calculate the neural net functions.
     :param weights: list of weights: w1,w2 - matrices, b1,b2 - vectors.
     :param x: one data sampling.
+    :param y real classification of x.
     :return: y_hat = soft_max(z_2).
     '''
-    y_hat = softmax(get_z2(weights, x))
-    return y_hat
+    w1, w2, b1, b2 = [weights[key] for key in ('w1', 'w2', 'b1', 'b2')]
+    new_x = np.reshape(x, (-1, 1))
+    z1 = np.dot(w1, new_x) + b1
+    g = np.vectorize(relu)
+    h = g(z1)
+    z2 = np.dot(w2, h) + b2
+    y_hat = softmax(z2)
+    loss = get_negative_log_loss(y_hat, y)
+    ret = {'x': new_x, 'y': y, 'z1': z1, 'h': h, 'z2': z2, 'loss': loss, 'y_hat': y_hat}
+    for key in weights.keys():
+        ret[key] = weights[key]
+    return ret
+
+
+def relu_derivative(x):
+    '''
+    calculate relu derivative.
+    :param x: paramter.
+    :return: relu derivative 1 or 0.
+    '''
+    if x > 0:
+        return 1
+    return 0
+
+
+def back_prop(fprop_cache):
+    x, y, z1, h, z2, w2, loss, y_hat = [fprop_cache[key] for key in ('x', 'y', 'z1', 'h', 'z2', 'w2', 'loss', 'y_hat')]
+
+    '''
+    calculate w2:
+    '''
+    dl_dz2 = np.subtract(y_hat, 1)  # dL/dy_hat *_dy_hat/dz2
+    dz2_dw2 = h.T # dz2/dw2
+    dw2 = np.dot(dl_dz2, dz2_dw2)  # dLw2= dL/dy_hat * dy_hat/dz2 * dz2/dw2
+
+    '''
+    calculate w1:
+    '''
+    dz2_dh = w2  # dz2/dh
+    dl_dh = np.dot(dl_dz2, dz2_dh)  # dl/dh
+    dh_dz1 = relu_derivative(z1)  # dh1_dz1
+    dz1_dw1 = x  # dz1/dw1
+    dw1 = np.dot(dl_dh, np.dot(dh_dz1, dz1_dw1))  # dLw1 = dL/dy_hat *_dy_hat/dz2 * dz2/dh * dh1/dz1 * dz1/dw1
+
+    '''
+    calculate b2:
+    '''
+    db2 = dl_dz2
+
+    '''
+    clculate b1:
+    '''
+    db1 = np.dot(dl_dh, dh_dz1)
+    return {'w1': dw1, 'b1': db1, 'w2': dw2, 'b2': db2}
 
 
 def get_negative_log_loss(y_hat, y):
@@ -141,8 +195,11 @@ def get_negative_log_loss(y_hat, y):
     # TODO: check what to do with log on 0 (equal -inf). possible solution:
     # https://stackoverflow.com/questions/49602205/python-numpy-negative-log-likelihood-calculation-when-some-predicted-probabiliti
     y_hat = np.log2(y_hat)
+    # change all -inf to zeros.
+    y_hat[y_hat == -inf] = 0
     # return scalar of - y*log(y_hat)
     return -np.dot(y_vec, y_hat)
+
 
 def main():
     '''
@@ -170,15 +227,16 @@ def main():
     '''
     init all the parameters, weight matrixes and vectors between layers with hidden layer size h.
     '''
-    # w1, w2 = init_weights(hidden_size, np.ma.size(train_X, 1)), init_weights(clusters_num, hidden_size)
-    # b1, b2 = init_weights(hidden_size), init_weights(clusters_num)
-    # weights = [w1, w2, b1, b2]
-    # y_hat = forward(weights, train_X[0])
+    w1, w2 = init_weights(hidden_size, np.ma.size(train_X, 1)), init_weights(clusters_num, hidden_size)
+    b1, b2 = init_weights(hidden_size), init_weights(clusters_num)
+    weights = {'w1': w1, 'w2': w2, 'b1': b1, 'b2': b2}
+    fprop_cache = forward_prop(weights, train_X[0], train_Y[0])
+    print(back_prop(fprop_cache))
     # print(get_negative_log_loss(y_hat, train_Y[0]))
-    # y_hat = np.array([2, 4, 8, 16, 64])
-    # y = 4
-    # sum = get_negative_log_loss(y_hat, y)
-    print(sum)
+    y_hat = np.array([2, 4, 8, 16, 64])
+    y = 4
+    loss = get_negative_log_loss(y_hat, y)
+    print(loss)
     # print(y_hat)
     # print(type(train_X))
     # print(type(train_X[0]))
