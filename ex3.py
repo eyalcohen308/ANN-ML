@@ -61,9 +61,51 @@ def load_files():
     return train_X, train_Y
 
 
-def train(train_x, train_y, lr, epochs, ):
-    ## TODO: write the function.
-    print(6)
+def train(train_x, train_y, lr, epochs, weights, validation_x, validation_y):
+    '''
+    sdfsdf.
+    :param train_x:
+    :param train_y:
+    :param lr:
+    :param epochs:
+    :param weights:
+    :param validation_x:
+    :param validation_y:
+    '''
+    for i in range(epochs):
+        sum_loss = 0.0
+        train_x, train_y = shuffle_data(train_x, train_y)
+        for x, y in zip(train_x, train_y):
+            fprop_cache = forward_prop(weights, x)
+            loss = get_negative_log_loss(fprop_cache["y_hat"], y)
+            sum_loss += loss
+            gradients = back_prop(fprop_cache, y)
+            weights = update_weights(weights, gradients, lr)
+        acc, validation_loss = validation_check(weights, validation_x, validation_y)
+        print(i, sum_loss / np.size(train_y), validation_loss, "{}%".format(acc * 100))
+
+
+def validation_check(weights, validation_x, validation_y):
+    '''
+    test the model each epoch on the validations set.
+    :param weights: weights matrices.
+    :param validation_x: validation data x.
+    :param validation_y: classification data y.
+    :return: correctness percent and average loss.
+    '''
+    sigma_loss = 0.0
+    correct = 0.0
+    num_of_examples = np.size(validation_x, 0)
+    for x, y in zip(validation_x, validation_y):
+        fprop_cache = forward_prop(weights, x)
+        y_hat = fprop_cache["y_hat"]
+        loss = get_negative_log_loss(y_hat, y)
+        sigma_loss += loss
+        if y_hat.argmax() == y:
+            correct += 1
+    accuracy = correct / num_of_examples
+    avg_loss = sigma_loss / num_of_examples
+    return accuracy, avg_loss
 
 
 def relu(x):
@@ -117,12 +159,19 @@ def get_z1(weights, x):
     return z1
 
 
-def forward_prop(weights, x, y):
+def softMax(x):
+    """Compute softmax values for each sets of scores in x.
+    :param x: vector of features
+    """
+    e_x = np.exp(x - np.max(x))
+    return e_x / e_x.sum(axis=0)
+
+
+def forward_prop(weights, x):
     '''
     calculate the neural net functions.
     :param weights: list of weights: w1,w2 - matrices, b1,b2 - vectors.
     :param x: one data sampling.
-    :param y real classification of x.
     :return: y_hat = soft_max(z_2).
     '''
     w1, w2, b1, b2 = [weights[key] for key in ('w1', 'w2', 'b1', 'b2')]
@@ -130,13 +179,28 @@ def forward_prop(weights, x, y):
     z1 = np.dot(w1, new_x) + b1
     g = np.vectorize(relu)
     h = g(z1)
+    maxi = h.max() or 1
+    h = h / maxi
     z2 = np.dot(w2, h) + b2
     y_hat = softmax(z2)
-    loss = get_negative_log_loss(y_hat, y)
-    ret = {'x': new_x, 'y': y, 'z1': z1, 'h': h, 'z2': z2, 'loss': loss, 'y_hat': y_hat}
+    ret = {'x': new_x, 'z1': z1, 'h': h, 'z2': z2, 'y_hat': y_hat}
     for key in weights.keys():
         ret[key] = weights[key]
     return ret
+
+
+def update_weights(weights, gradients, eta):
+    '''
+    the function update all the weights by the gradients and the eta
+    :param gradients: gradients of the weights w1, w2, b1 b2.
+    :param weights: matrix weights of the neural network.
+    :param eta: learning rate of the neural network.
+    :return: weights after updating.
+    '''
+    w1, w2, b1, b2 = [eta * weights[key] for key in ('w1', 'w2', 'b1', 'b2')]
+    dw1, dw2, db1, db2 = [eta * gradients[key] for key in ('dw1', 'dw2', 'db1', 'db2')]
+    w1, w2, b1, b2 = w1 - dw1, w2 - dw2, b1 - db1, b2 - db2
+    return {'w1': w1, 'w2': w2, 'b1': b1, 'b2': b2}
 
 
 def relu_derivative(x):
@@ -150,35 +214,38 @@ def relu_derivative(x):
     return 0
 
 
-def back_prop(fprop_cache):
-    x, y, z1, h, z2, w2, loss, y_hat = [fprop_cache[key] for key in ('x', 'y', 'z1', 'h', 'z2', 'w2', 'loss', 'y_hat')]
-
+def back_prop(fprop_cache, y):
+    x, z1, h, z2, w2, y_hat = [fprop_cache[key] for key in ('x', 'z1', 'h', 'z2', 'w2', 'y_hat')]
     '''
     calculate w2:
     '''
-    dl_dz2 = np.subtract(y_hat, 1)  # dL/dy_hat *_dy_hat/dz2
-    dz2_dw2 = h.T # dz2/dw2
+    y_vec = np.zeros((y_hat.size, 1))
+    y_vec[int(y)] = 1
+    dl_dz2 = np.subtract(y_hat, y_vec)  # dL/dy_hat *_dy_hat/dz2
+    dz2_dw2 = h.T  # dz2/dw2
     dw2 = np.dot(dl_dz2, dz2_dw2)  # dLw2= dL/dy_hat * dy_hat/dz2 * dz2/dw2
 
     '''
     calculate w1:
     '''
     dz2_dh = w2  # dz2/dh
-    dl_dh = np.dot(dl_dz2, dz2_dh)  # dl/dh
-    dh_dz1 = relu_derivative(z1)  # dh1_dz1
+    dl_dh = np.dot(dl_dz2.T, dz2_dh)  # dl/dh
+    g = np.vectorize(relu_derivative)
+    dh_dz1 = g(z1)  # dh1_dz1
     dz1_dw1 = x  # dz1/dw1
-    dw1 = np.dot(dl_dh, np.dot(dh_dz1, dz1_dw1))  # dLw1 = dL/dy_hat *_dy_hat/dz2 * dz2/dh * dh1/dz1 * dz1/dw1
-
+    # dw1 = np.dot(dl_dh.T, np.dot(dh_dz1.T, dz1_dw1))  # dLw1 = dL/dy_hat *_dy_hat/dz2 * dz2/dh * dh1/dz1 * dz1/dw1
+    # dw1 = np.dot(dl_dh.T, np.dot(dh_dz1.T, dz1_dw1))  # dLw1 = dL/dy_hat *_dy_hat/dz2 * dz2/dh * dh1/dz1 * dz1/dw1
+    dw1 = np.dot((dl_dh.T * dh_dz1), dz1_dw1.T)
     '''
     calculate b2:
     '''
-    db2 = dl_dz2
+    db2 = dl_dz2  # dz2/db2 = 1
 
     '''
     clculate b1:
     '''
-    db1 = np.dot(dl_dh, dh_dz1)
-    return {'w1': dw1, 'b1': db1, 'w2': dw2, 'b2': db2}
+    db1 = np.dot(dl_dh, dh_dz1)  # dz1/db1 = 1
+    return {'dw1': dw1, 'db1': db1, 'dw2': dw2, 'db2': db2}
 
 
 def get_negative_log_loss(y_hat, y):
@@ -201,28 +268,39 @@ def get_negative_log_loss(y_hat, y):
     return -np.dot(y_vec, y_hat)
 
 
+def normalize_data(x):
+    '''
+    the values is between 0-255, normalize the values to be [0,1]
+    :param x: values to normalize.
+    :return: x after normalize.
+    '''
+    x = np.divide(x, 255)
+    return x
+
+
 def main():
     '''
     Hyper parameters:
     '''
 
     # number of learning iterations:
-    epochs = 30
+    epochs = 20
     # size of hidden layer:
-    hidden_size = 60
+    hidden_size = 15
     # number of clusters:
     clusters_num = 10
     # part size of validation from test:
     validation_percent = 0.2
     # learning rate: 0.1 or 0.01 or 0.001.
-    lr = 0.1
+    lr = 0.01
 
     train_X, train_Y = load_files()
+    train_X = normalize_data(train_X)
     # size of division to train and validation.
     cross_validation_size = int(len(train_X) * validation_percent)
 
-    # validation_X, validation_Y = train_X[cross_validation_size:], train_Y[cross_validation_size:]
-    # train_X, train_Y = train_X[:cross_validation_size], train_Y[:cross_validation_size]
+    validation_X, validation_Y = train_X[cross_validation_size:], train_Y[cross_validation_size:]
+    train_X, train_Y = train_X[:cross_validation_size], train_Y[:cross_validation_size]
 
     '''
     init all the parameters, weight matrixes and vectors between layers with hidden layer size h.
@@ -230,19 +308,7 @@ def main():
     w1, w2 = init_weights(hidden_size, np.ma.size(train_X, 1)), init_weights(clusters_num, hidden_size)
     b1, b2 = init_weights(hidden_size), init_weights(clusters_num)
     weights = {'w1': w1, 'w2': w2, 'b1': b1, 'b2': b2}
-    fprop_cache = forward_prop(weights, train_X[0], train_Y[0])
-    print(back_prop(fprop_cache))
-    # print(get_negative_log_loss(y_hat, train_Y[0]))
-    y_hat = np.array([2, 4, 8, 16, 64])
-    y = 4
-    loss = get_negative_log_loss(y_hat, y)
-    print(loss)
-    # print(y_hat)
-    # print(type(train_X))
-    # print(type(train_X[0]))
-    # print(type(train_X[0][0]))
-    # print(len(train_X[0]))
-    ##print(train_Y)
+    train(train_X, train_Y, lr, epochs, weights, validation_X, validation_Y)
 
 
 if __name__ == "__main__":
