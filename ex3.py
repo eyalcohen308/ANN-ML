@@ -48,20 +48,22 @@ def init_weights(rows, cols=1):
     # if cols == 1:
     #     return np.random.rand(rows)
     # else:
-    return np.random.rand(rows, cols)
+    return np.random.randn(rows, cols)
+    # return np.random.uniform(-0.08, 0.08, rows * cols).reshape(rows, cols)
 
 
 def load_files():
     # train constants
     train_x_path = sys.argv[1]
     train_y_path = sys.argv[2]
-    # test_x_path = sys.argv[3]
+    test_x_path = sys.argv[3]
     train_X = np.loadtxt(train_x_path)
     train_Y = np.loadtxt(train_y_path)
-    return train_X, train_Y
+    test_x = np.loadtxt(test_x_path)
+    return train_X, train_Y, test_x
 
 
-def train(train_x, train_y, lr, epochs, weights, validation_x, validation_y):
+def train(train_x, train_y, lr, epochs, weights):
     '''
     sdfsdf.
     :param train_x:
@@ -69,9 +71,9 @@ def train(train_x, train_y, lr, epochs, weights, validation_x, validation_y):
     :param lr:
     :param epochs:
     :param weights:
-    :param validation_x:
-    :param validation_y:
     '''
+    # final_acc = 0.0
+    # iteration = 0
     for i in range(epochs):
         sum_loss = 0.0
         train_x, train_y = shuffle_data(train_x, train_y)
@@ -81,8 +83,13 @@ def train(train_x, train_y, lr, epochs, weights, validation_x, validation_y):
             sum_loss += loss
             gradients = back_prop(fprop_cache, y)
             weights = update_weights(weights, gradients, lr)
-        acc, validation_loss = validation_check(weights, validation_x, validation_y)
-        print(i, sum_loss / np.size(train_y), validation_loss, "{}%".format(acc * 100))
+            # acc, validation_loss = validation_check(weights, validation_x, validation_y)
+            # if final_acc < acc:
+            #     final_acc = acc
+            #     iteration = i
+    # return final_acc, iteration
+    # print(i, sum_loss / np.size(train_y), validation_loss, "{}%".format(acc * 100))
+    return weights
 
 
 def validation_check(weights, validation_x, validation_y):
@@ -106,6 +113,22 @@ def validation_check(weights, validation_x, validation_y):
     accuracy = correct / num_of_examples
     avg_loss = sigma_loss / num_of_examples
     return accuracy, avg_loss
+
+
+def predict(weights, test_x):
+    '''
+    predict the classifications of the data set x and output it to file.
+    :param weights: weights matrices.
+    :param test_x: validation data x.
+    :return: nothing.
+    '''
+    file = open("test_y", "w")
+    for x in test_x:
+        fprop_cache = forward_prop(weights, x)
+        y_hat = fprop_cache["y_hat"]
+        classification = y_hat.argmax()
+        file.write(str(classification) + "\n")
+    file.close()
 
 
 def relu(x):
@@ -197,7 +220,7 @@ def update_weights(weights, gradients, eta):
     :param eta: learning rate of the neural network.
     :return: weights after updating.
     '''
-    w1, w2, b1, b2 = [eta * weights[key] for key in ('w1', 'w2', 'b1', 'b2')]
+    w1, w2, b1, b2 = [weights[key] for key in ('w1', 'w2', 'b1', 'b2')]
     dw1, dw2, db1, db2 = [eta * gradients[key] for key in ('dw1', 'dw2', 'db1', 'db2')]
     w1, w2, b1, b2 = w1 - dw1, w2 - dw2, b1 - db1, b2 - db2
     return {'w1': w1, 'w2': w2, 'b1': b1, 'b2': b2}
@@ -278,29 +301,36 @@ def normalize_data(x):
     return x
 
 
+def check_hyper_parameters(lr, epochs, hidden_size, train_X, train_Y, clusters_num, validation_X, validation_Y):
+    w1, w2 = init_weights(hidden_size, np.ma.size(train_X, 1)), init_weights(clusters_num, hidden_size)
+    b1, b2 = init_weights(hidden_size), init_weights(clusters_num)
+    weights = {'w1': w1, 'w2': w2, 'b1': b1, 'b2': b2}
+    return train(train_X, train_Y, lr, epochs, weights, validation_X, validation_Y)
+
+
 def main():
     '''
     Hyper parameters:
     '''
 
     # number of learning iterations:
-    epochs = 20
+    epochs = 25
     # size of hidden layer:
-    hidden_size = 15
+    hidden_size = 90
     # number of clusters:
     clusters_num = 10
     # part size of validation from test:
     validation_percent = 0.2
     # learning rate: 0.1 or 0.01 or 0.001.
-    lr = 0.01
+    lr = 0.1
 
-    train_X, train_Y = load_files()
+    train_X, train_Y, test_X = load_files()
     train_X = normalize_data(train_X)
     # size of division to train and validation.
-    cross_validation_size = int(len(train_X) * validation_percent)
+    # cross_validation_size = int(len(train_X) * validation_percent)
 
-    validation_X, validation_Y = train_X[cross_validation_size:], train_Y[cross_validation_size:]
-    train_X, train_Y = train_X[:cross_validation_size], train_Y[:cross_validation_size]
+    # validation_X, validation_Y = train_X[cross_validation_size:], train_Y[cross_validation_size:]
+    # train_X, train_Y = train_X[:cross_validation_size], train_Y[:cross_validation_size]
 
     '''
     init all the parameters, weight matrixes and vectors between layers with hidden layer size h.
@@ -308,7 +338,8 @@ def main():
     w1, w2 = init_weights(hidden_size, np.ma.size(train_X, 1)), init_weights(clusters_num, hidden_size)
     b1, b2 = init_weights(hidden_size), init_weights(clusters_num)
     weights = {'w1': w1, 'w2': w2, 'b1': b1, 'b2': b2}
-    train(train_X, train_Y, lr, epochs, weights, validation_X, validation_Y)
+    weights = train(train_X, train_Y, lr, epochs, weights)
+    predict(weights, test_X)
 
 
 if __name__ == "__main__":
